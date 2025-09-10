@@ -3,6 +3,8 @@ import sys
 import lz4.block
 from io import BytesIO
 
+save_intermediate = False
+
 
 class Reader(BytesIO):
     def __init__(self, initial_bytes=b"") -> None:
@@ -108,12 +110,57 @@ class SaveFile:
         assert len(rb_entries) == count
 
         reader.seek(string_table_offset, 0)
+        size = string_table_footer_offset - string_table_offset
+        magic = reader.read_string(4)
+        assert magic == "MANU"
+        size -= 4
+
+        string_count = reader.read_int32()
+        reader.read_int32()
+        size -= 4 * 2
+
+        strings = []
+        for i in range(string_count):
+            s_len = reader.read_int(1)
+            try:
+                s = reader.read_string(s_len)
+            except UnicodeDecodeError:
+                reader.seek(-s_len, 1)
+                s = reader.read(s_len).decode(errors="ignore")
+            strings.append(s)
+            size -= 1 + s_len
+
+        assert len(strings) == string_count
+
+        reader.read_int32()
+        magic = reader.read_string(4)
+        size -= 4 + 4
+        assert magic == "ENOD"
+
+        if save_intermediate:
+            with open("data/strings", "w") as f:
+                for s in strings:
+                    f.write(f"{s}\n")
+
+        reader.seek(variable_table_offset, 0)
+        entry_count = reader.read_int32()
+        variable_table_entries = []
+
+        for _ in range(entry_count):
+            v_offset = reader.read_int32()
+            v_size = reader.read_int32()
+            variable_table_entries.append((v_offset, v_size))
+
+        assert len(variable_table_entries) == entry_count
+        variable_table_entries.sort(key=lambda item: item[0])
 
 
 if __name__ == "__main__":
     save_file = SaveFile(sys.argv[1])
     save_file.decompress()
-    with open("uncompressed_save", "wb") as f:
-        f.write(save_file.data)
+
+    if save_intermediate:
+        with open("data/uncompressed_save.bin", "wb") as f:
+            f.write(save_file.data)
 
     save_file.parse()
