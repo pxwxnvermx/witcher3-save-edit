@@ -23,13 +23,6 @@ class Reader(BytesIO):
         return int.from_bytes(self.read(size), "little", signed=True)
 
 
-@dataclass
-class CompressedChunkData:
-    compressed_size: int = 0
-    uncompressed_size: int = 0
-    eof_offset: int = 0
-
-
 class SaveFile:
     chunk_count = 0
     header_size = 0
@@ -54,22 +47,18 @@ class SaveFile:
             compressed_size = self.file.read_int32()
             uncompressed_size = self.file.read_int32()
             eof_offset = self.file.read_int32()
-            chunk_metadata.append(
-                CompressedChunkData(compressed_size, uncompressed_size, eof_offset)
-            )
+            chunk_metadata.append((compressed_size, uncompressed_size, eof_offset))
 
         self.file.seek(self.header_size, 0)
 
-        for chunk in chunk_metadata:
-            compressed_size = chunk.compressed_size
-            uncompressed_size = chunk.uncompressed_size
+        for compressed_size, uncompressed_size, eof_offset in chunk_metadata:
             raw_data = self.file.read(compressed_size)
-            assert chunk.eof_offset == 0 or self.file.tell() == chunk.eof_offset
+            assert eof_offset == 0 or self.file.tell() == eof_offset
             if 0 < compressed_size < uncompressed_size:
                 chunk_data = lz4.block.decompress(
                     raw_data, uncompressed_size=uncompressed_size
                 )
-                assert len(chunk_data) == chunk.uncompressed_size
+                assert len(chunk_data) == uncompressed_size
                 self.data.extend(chunk_data)
 
         self.file.close()
