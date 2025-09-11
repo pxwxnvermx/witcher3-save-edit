@@ -26,42 +26,42 @@ class Reader(BytesIO):
 class SaveFile:
     chunk_count = 0
     header_size = 0
-    file: Reader = None
+    filepath: str = None
 
     data = bytearray()
 
     def __init__(self, filepath):
-        self.file = Reader(open(filepath, "rb").read())
+        self.filepath = filepath
 
     def decompress(self):
-        snfh, fzlc = self.file.read(4), self.file.read(4)
-        assert snfh.decode() == "SNFH"
-        assert fzlc.decode() == "FZLC"
+        with Reader(open(self.filepath, "rb").read()) as file:
+            snfh = file.read_string(4)
+            fzlc = file.read_string(4)
+            assert snfh == "SNFH"
+            assert fzlc == "FZLC"
 
-        self.chunk_count = self.file.read_int32()
-        self.header_size = self.file.read_int32()
+            self.chunk_count = file.read_int32()
+            self.header_size = file.read_int32()
 
-        chunk_metadata = []
+            chunk_metadata = []
 
-        for _ in range(self.chunk_count):
-            compressed_size = self.file.read_int32()
-            uncompressed_size = self.file.read_int32()
-            eof_offset = self.file.read_int32()
-            chunk_metadata.append((compressed_size, uncompressed_size, eof_offset))
+            for _ in range(self.chunk_count):
+                compressed_size = file.read_int32()
+                uncompressed_size = file.read_int32()
+                eof_offset = file.read_int32()
+                chunk_metadata.append((compressed_size, uncompressed_size, eof_offset))
 
-        self.file.seek(self.header_size, 0)
+            file.seek(self.header_size, 0)
 
-        for compressed_size, uncompressed_size, eof_offset in chunk_metadata:
-            raw_data = self.file.read(compressed_size)
-            assert eof_offset == 0 or self.file.tell() == eof_offset
-            if 0 < compressed_size < uncompressed_size:
-                chunk_data = lz4.block.decompress(
-                    raw_data, uncompressed_size=uncompressed_size
-                )
-                assert len(chunk_data) == uncompressed_size
-                self.data.extend(chunk_data)
-
-        self.file.close()
+            for compressed_size, uncompressed_size, eof_offset in chunk_metadata:
+                raw_data = file.read(compressed_size)
+                assert eof_offset == 0 or file.tell() == eof_offset
+                if 0 < compressed_size < uncompressed_size:
+                    chunk_data = lz4.block.decompress(
+                        raw_data, uncompressed_size=uncompressed_size
+                    )
+                    assert len(chunk_data) == uncompressed_size
+                    self.data.extend(chunk_data)
 
     def parse(self):
         reader = Reader(self.data)
