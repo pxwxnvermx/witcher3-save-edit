@@ -1,7 +1,9 @@
 import lz4.block
 from src.utils import Reader, Size
 from src.parser import VariableParser
+import logging
 
+logger = logging.getLogger(__name__)
 
 class SaveFile:
     header_size = 0
@@ -34,6 +36,9 @@ class SaveFile:
                 eof_offset = file.read_int32()
                 chunk_metadata.append((compressed_size, uncompressed_size, eof_offset))
 
+            file.seek(0)
+            self.data.extend(file.read(self.header_size))
+
             file.seek(self.header_size, 0)
 
             # uncompress chunks
@@ -49,6 +54,7 @@ class SaveFile:
 
     def parse(self):
         reader = Reader(self.data)
+        reader.seek(self.header_size)
         header_start = reader.tell()
         magic = reader.read_string(4)
         assert magic == "SAV3"
@@ -57,14 +63,14 @@ class SaveFile:
         type_code_3 = reader.read_int32()
 
         reader.seek(-6, 2)
-        variable_table_offset = reader.read_int32() - self.header_size
+        variable_table_offset = reader.read_int32()
         string_table_footer_offset = variable_table_offset - 10
         magic = reader.read_string(2)
         assert magic == "SE"
 
         reader.seek(string_table_footer_offset, 0)
-        nm_section_offset = reader.read_int32() - self.header_size
-        rb_section_offset = reader.read_int32() - self.header_size
+        nm_section_offset = reader.read_int32()
+        rb_section_offset = reader.read_int32()
 
         reader.seek(nm_section_offset, 0)
         magic = reader.read_string(2)
@@ -95,16 +101,16 @@ class SaveFile:
         for _ in range(entry_count):
             v_offset = reader.read_int32()
             v_size = reader.read_int32()
-            variable_table_entries.append((v_offset - self.header_size, v_size))
+            variable_table_entries.append((v_offset, v_size))
 
         assert len(variable_table_entries) == entry_count
         variable_table_entries.sort(key=lambda item: item[0])
 
         variables = []
         variable_parser = VariableParser(variable_names=self.variable_names)
-        parsed_variables = open("data/parsed_variables", "w")
 
         for i in range(len(variable_table_entries)):
+            cur_pos = reader.tell()
             token_size = Size(variable_table_entries[i][1])
 
             if (i < len(variable_table_entries) - 2):
@@ -114,5 +120,4 @@ class SaveFile:
             variable = variable_parser.parse(reader, token_size)
 
             if variable:
-                parsed_variables.write(f"{i} {variable} \n")
                 variables.append(variable)

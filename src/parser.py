@@ -1,6 +1,7 @@
 from src.utils import Reader, Size
 from uuid import UUID
 import logging
+import struct
 
 logger = logging.getLogger(__name__)
 unknown_types = set()
@@ -44,20 +45,11 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
 
     if type == "Float":
         size.size -= 4
-        return float.fromhex(reader.read(4).hex())
+        return struct.unpack("<f", reader.read(4))
 
     if type == "Double":
         size.size -= 8
-        return float.fromhex(reader.read(8).hex())
-
-    if type.startswith("array:2,0,"):
-        element_type = type.removeprefix("array:2,0,")
-        length = reader.read_int32()
-        size.size -= 4
-        array = []
-        for _ in range(length):
-            array.append(parse_token(reader, element_type, size, variable_names))
-        return array
+        return struct.unpack("<d", reader.read(8))
 
     if type == "String":
         header_byte = reader.read_int(1)
@@ -103,6 +95,22 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
         size.size -= 17
         return tuple(value)
 
+    if type == "Vector":
+        size.size -= 35
+        return reader.read(35)
+
+    if type == "Vector2":
+        size.size -= 19
+        return reader.read(19)
+
+    if type == "EulerAngles":
+        size.size -= 3 + (8 * 3)
+        unknown1 = reader.read(3)
+        pitch = float.fromhex(reader.read(8).hex())
+        yaw = float.fromhex(reader.read(8).hex())
+        roll = float.fromhex(reader.read(8).hex())
+        return unknown1, pitch, yaw, roll
+
     if type.startswith("handle:"):
         handle_type = type.removeprefix("handle:")
         return parse_token(reader, handle_type, size, variable_names)
@@ -111,9 +119,111 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
         handle_type = type.removeprefix("soft:")
         return parse_token(reader, handle_type, size, variable_names)
 
-    logger.info(f"{reader.tell()}, {type}")
+    if type.startswith("array:2,0,"):
+        element_type = type.removeprefix("array:2,0,")
+        length = reader.read_int32()
+        size.size -= 4
+        array = []
+        for _ in range(length):
+            array.append(parse_token(reader, element_type, size, variable_names))
+        return array
+
+    if type == "EntityHandle":
+        unknown1 = reader.read_int(1)
+        size.size -= 1
+        unknown2 = 0x00
+        unknown3 = None
+        if unknown1 > 0:
+            unknown2 = reader.read(1)
+            unknown3 = reader.read(16)
+            size.size -= 17
+        return unknown1, unknown2, unknown3
+
+    if type == "TagList":
+        taglist_header = reader.read_int(1)
+        size.size -= 1
+
+        taglist_flag = (taglist_header & 128) > 0
+        taglist_count = taglist_header & 127
+
+        taglist_entries = []
+        for _ in range(taglist_count):
+            taglist_entries.append(reader.read_int16())
+        size.size -= taglist_count * 2
+
+        return taglist_flag, taglist_entries
+
+    if type in {"eGwintFaction", "EJournalStatus", "EZoneName", "EDifficultyMode"}:
+        unknown1 = reader.read(1)
+        unknown2 = reader.read(1)
+        size.size -= 2
+        return unknown1, unknown2
+
+
+    if type == "W3EnvironmentManager":
+        unknown = reader.read(19)
+        size.size -= 19
+        return unknown
+
+
+    if type == "SQuestThreadSuspensionData":
+        unknown = reader.read(29)
+        size.size -= 29
+        return unknown
+
+    if type == "SActionPointId":
+        unknown1 = reader.read(1)
+        unknown2 = reader.read_int16()
+        size.size -= 3
+        unknown3 = 0
+        if unknown2 > 0:
+            unknown3 = reader.read(40)
+            size.size -= 40
+        return unknown3
+
+    if type in {
+        "EAIAttitude",
+        "CPlayerInput",
+        "EBehaviorGraph",
+        "ESignType",
+        "EVehicleSlot",
+        "SBuffImmunity",
+        "SGameplayFact",
+        "SGlossaryImageOverride",
+        "SRadialSlotDef",
+        "SItemUniqueId",
+        "SRewardMultiplier",
+        "W3AbilityManager",
+        "W3EffectManager",
+        "W3LevelManager",
+        "W3Reputation",
+        "W3TutorialManagerUIHandler",
+        "WeaponHolster",
+    }:
+        unknown = reader.read(size.size)
+        size.size = 0
+        return unknown
+
+    if type == "CEntityTemplate":
+        header_byte = reader.read_int(1)
+        size.size -= 1
+
+        encoded_string = (header_byte & 128) > 0
+        if encoded_string:
+            string_len = header_byte & 127
+            value = reader.read_string(string_len)
+            size.size -= string_len
+            return value
+        else:
+            unknown = reader.read(size.size)
+            size = 0
+            return unknown
+
+
+    logger.info(f"{reader.tell()}, {type}, {size.size}")
     unknown_types.add(type)
-    return
+    size.size = 0
+    return reader.read(size.size)
 
 
 class VariableParser:
@@ -167,6 +277,11 @@ class VariableParser:
             reader.read_string(4)
             size.size -= 4
             return self.parse_manu_variable(reader, size)
+
+        if magic == "SBDF":
+            reader.read_string(4)
+            size.size -= 4
+            return self.parse_sbdf_variable(reader, size)
 
         variable = magic, "UNKNOWN", reader.read(size.size)
         size.size = 0
@@ -257,7 +372,7 @@ class VariableParser:
     def parse_aval_variable(self, reader: Reader, size: Size):
         name_idx = reader.read_int16()
         type_idx = reader.read_int16()
-        unknown = reader.read()
+        unknown = reader.read_int32()
         size.size -= 6
 
         name = self.variable_names[name_idx - 1]
@@ -275,11 +390,11 @@ class VariableParser:
         name = self.variable_names[name_idx - 1]
         type_name = self.variable_names[type_idx - 1]
         read_value_size = Size(value_size)
+        logger.info(f"{name}")
         value = parse_token(reader, type_name, read_value_size, self.variable_names)
         size.size -= value_size
         assert read_value_size.size == 0
         return "PORP", name, type_name, value
-
 
     def parse_manu_variable(self, reader: Reader, size: Size):
         string_count = reader.read_int32()
@@ -304,3 +419,37 @@ class VariableParser:
         size.size -= 4 + 4
         assert magic == "ENOD"
         return "MANU", variable_names
+
+    def parse_sbdf_variable(self, reader: Reader, size: Size):
+        string_count = reader.read_int32()
+        size.size -= 4
+
+        variables = []
+        for i in range(string_count):
+            cur_pos = reader.tell()
+            s_len = reader.read_int(1) & 127
+            size.size -= s_len
+            check = reader.peek(1) == b'\x01'
+            if check:
+                reader.read(1)
+                size.size -= 1
+            try:
+                s = reader.read_string(s_len)
+            except UnicodeDecodeError:
+                reader.seek(-s_len, 1)
+                s = reader.read(s_len).decode(errors="ignore")
+
+            reader.read_int16()
+            count = reader.read_int16()
+            value = []
+            for _ in range(count):
+                unknown = reader.read_int16()
+                value.append(reader.read_int(8))
+            logger.info(f"{cur_pos}, {check}, {s}")
+            variables.append((s, value))
+
+        assert len(variables) == string_count
+        magic = reader.read_string(4)
+        size.size -= 4 + 4
+        assert magic == "EBDF"
+        return "SBDF", variables

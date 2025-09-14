@@ -27,3 +27,8 @@ class Reader(BytesIO):
         s = self.read(size).decode()
         self.seek(-size, 1)
         return s
+
+    def peek(self, size) -> str:
+        s = self.read(size)
+        self.seek(-size, 1)
+        return s

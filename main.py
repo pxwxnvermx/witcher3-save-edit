@@ -1,11 +1,11 @@
 import sys
 import logging
 
-from src.parser import VariableParser, unknown_types
+from src.parser import unknown_types
 from src.savefile import SaveFile
 
 
-logging.basicConfig(filename="data/debug.log", level=logging.INFO)
+logging.basicConfig(filename="data/debug.log", filemode="w", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
