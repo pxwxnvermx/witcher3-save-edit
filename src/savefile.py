@@ -1,14 +1,14 @@
 import lz4.block
 from src.utils import Reader, Size
-from src.parser import VariableParser
+from src.parser import MANUVariableParser, Variable, VariableParser
 import logging
 
 logger = logging.getLogger(__name__)
 
+
 class SaveFile:
     header_size = 0
     filepath: str = None
-
     data = bytearray()
 
     def __init__(self, filepath):
@@ -17,17 +17,14 @@ class SaveFile:
     def decompress(self):
         with Reader(open(self.filepath, "rb").read()) as file:
             # verify SNFHFZLC are the starting magic bytes
-            snfh = file.read_string(4)
-            fzlc = file.read_string(4)
-            assert snfh == "SNFH"
-            assert fzlc == "FZLC"
+            snfhfzlc = file.read_string(8)
+            assert snfhfzlc == "SNFHFZLC"
 
             # chunk_count, header_size
             chunk_count = file.read_int32()
             self.header_size = file.read_int32()
 
             chunk_metadata = []
-
             # get chunk metadata, need to do this here before seeking
             # forward by header_size
             for _ in range(chunk_count):
@@ -40,7 +37,6 @@ class SaveFile:
             self.data.extend(file.read(self.header_size))
 
             file.seek(self.header_size, 0)
-
             # uncompress chunks
             for compressed_size, uncompressed_size, eof_offset in chunk_metadata:
                 raw_data = file.read(compressed_size)
@@ -90,9 +86,9 @@ class SaveFile:
 
         reader.seek(string_table_offset, 0)
         size = Size(string_table_footer_offset - string_table_offset)
-        magic = reader.read_string(4)
+        magic = reader.peek_string(4)
         assert magic == "MANU"
-        _, self.variable_names = VariableParser().parse_manu_variable(reader, size)
+        _, self.variable_names = MANUVariableParser([]).parse(reader, size)
 
         reader.seek(variable_table_offset, 0)
         entry_count = reader.read_int32()
@@ -106,18 +102,25 @@ class SaveFile:
         assert len(variable_table_entries) == entry_count
         variable_table_entries.sort(key=lambda item: item[0])
 
-        variables = []
+        self.variables = []
         variable_parser = VariableParser(variable_names=self.variable_names)
 
         for i in range(len(variable_table_entries)):
             cur_pos = reader.tell()
+            size = Size(variable_table_entries[i][1])
             token_size = Size(variable_table_entries[i][1])
 
-            if (i < len(variable_table_entries) - 2):
-                token_size = Size(variable_table_entries[i+1][0] - variable_table_entries[i][0])
+            if i < len(variable_table_entries) - 2:
+                token_size = Size(
+                    variable_table_entries[i + 1][0] - variable_table_entries[i][0]
+                )
 
             reader.seek(variable_table_entries[i][0])
             variable = variable_parser.parse(reader, token_size)
 
             if variable:
-                variables.append(variable)
+                v = Variable(
+                    variable=variable, size=size.size, token_size=token_size.size
+                )
+                logger.info(f" {cur_pos} {v}")
+                self.variables.append(v)
