@@ -335,11 +335,15 @@ class BLCKVariableParser(VariableParserBase):
         unknown3 = reader.read_int(2, False)
         size.size -= 2 * 3
 
+        read_value_size = Size(blck_size)
         variables = []
-        while size.size > 0:
-            variable = VariableParser(self.variable_names).parse(reader, size)
+        while read_value_size.size > 0:
+            variable = VariableParser(self.variable_names).parse(
+                reader, read_value_size
+            )
             variables.append(variable)
 
+        size.size -= blck_size
         return "BLCK", name, blck_size, unknown3, variables
 
 
@@ -351,7 +355,7 @@ class AVALVariableParser(VariableParserBase):
         name_idx = reader.read_int16()
         type_idx = reader.read_int16()
         unknown = reader.read_int32()
-        size.size -= 6
+        size.size -= 8
 
         name = self.variable_names[name_idx - 1]
         type_name = self.variable_names[type_idx - 1]
