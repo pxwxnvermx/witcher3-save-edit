@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from src.utils import Reader, Size
 from uuid import UUID
 import logging
@@ -6,52 +7,60 @@ import struct
 logger = logging.getLogger(__name__)
 unknown_types = set()
 
-def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]):
-    if type == "Uint8":
+
+@dataclass
+class Variable:
+    variable: any
+    size: int
+    token_size: int
+
+
+def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list[str]):
+    if type_name == "Uint8":
         size.size -= 1
         return reader.read_int(1, False)
 
-    if type == "Uint16":
-        size.size -= 1
-        return reader.read_int(1, False)
+    if type_name == "Uint16":
+        size.size -= 2
+        return reader.read_int(2, False)
 
-    if type == "Uint32":
+    if type_name == "Uint32":
         size.size -= 4
         return reader.read_int(4, False)
 
-    if type == "Uint64":
+    if type_name == "Uint64":
         size.size -= 8
         return reader.read_int(8, False)
 
-    if type == "Int8":
+    if type_name == "Int8":
         size.size -= 1
         return reader.read_int(1)
 
-    if type == "Int16":
-        size.size -= 1
-        return reader.read_int(1)
+    if type_name == "Int16":
+        size.size -= 2
+        return reader.read_int(2)
 
-    if type == "Int32":
+    if type_name == "Int32":
         size.size -= 4
         return reader.read_int(4)
 
-    if type == "Int64":
+    if type_name == "Int64":
         size.size -= 8
         return reader.read_int(8)
 
-    if type == "Bool":
+    if type_name == "Bool":
         size.size -= 1
         return bool(reader.read_int(1))
 
-    if type == "Float":
+    if type_name == "Float":
         size.size -= 4
         return struct.unpack("<f", reader.read(4))
 
-    if type == "Double":
+    if type_name == "Double":
         size.size -= 8
         return struct.unpack("<d", reader.read(8))
 
-    if type == "String":
+    if type_name == "String":
         header_byte = reader.read_int(1)
         size.size -= 1
         string_encoded = (header_byte & 128) > 0
@@ -61,12 +70,12 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
             return reader.read_string(string_length)
         return ""
 
-    if type == "StringAnsi":
+    if type_name == "StringAnsi":
         string_length = reader.read_int(1)
         size.size -= string_length
         return reader.read_string(string_length)
 
-    if type == "CName":
+    if type_name == "CName":
         name_idx = reader.read_int16()
         size.size -= 2
         try:
@@ -75,35 +84,35 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
             value = "Unknown"
         return value
 
-    if type == "CGUID":
+    if type_name == "CGUID":
         guid_data = reader.read(16)
         size.size -= 16
         return UUID(bytes=guid_data)
 
-    if type == "EngineTime":
+    if type_name == "EngineTime":
         size.size -= 3
         return reader.read(3)
 
-    if type == "GameTime":
+    if type_name == "GameTime":
         size.size -= 11
         return reader.read(11)
 
-    if type == "IdTag":
+    if type_name == "IdTag":
         value = [reader.read(1)]
         for _ in range(4):
             value.append(reader.read_int32())
         size.size -= 17
         return tuple(value)
 
-    if type == "Vector":
+    if type_name == "Vector":
         size.size -= 35
         return reader.read(35)
 
-    if type == "Vector2":
+    if type_name == "Vector2":
         size.size -= 19
         return reader.read(19)
 
-    if type == "EulerAngles":
+    if type_name == "EulerAngles":
         size.size -= 3 + (8 * 3)
         unknown1 = reader.read(3)
         pitch = float.fromhex(reader.read(8).hex())
@@ -111,24 +120,7 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
         roll = float.fromhex(reader.read(8).hex())
         return unknown1, pitch, yaw, roll
 
-    if type.startswith("handle:"):
-        handle_type = type.removeprefix("handle:")
-        return parse_token(reader, handle_type, size, variable_names)
-
-    if type.startswith("soft:"):
-        handle_type = type.removeprefix("soft:")
-        return parse_token(reader, handle_type, size, variable_names)
-
-    if type.startswith("array:2,0,"):
-        element_type = type.removeprefix("array:2,0,")
-        length = reader.read_int32()
-        size.size -= 4
-        array = []
-        for _ in range(length):
-            array.append(parse_token(reader, element_type, size, variable_names))
-        return array
-
-    if type == "EntityHandle":
+    if type_name == "EntityHandle":
         unknown1 = reader.read_int(1)
         size.size -= 1
         unknown2 = 0x00
@@ -139,7 +131,7 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
             size.size -= 17
         return unknown1, unknown2, unknown3
 
-    if type == "TagList":
+    if type_name == "TagList":
         taglist_header = reader.read_int(1)
         size.size -= 1
 
@@ -153,25 +145,19 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
 
         return taglist_flag, taglist_entries
 
-    if type in {"eGwintFaction", "EJournalStatus", "EZoneName", "EDifficultyMode"}:
+    if type_name in {"eGwintFaction", "EJournalStatus", "EZoneName", "EDifficultyMode"}:
         unknown1 = reader.read(1)
         unknown2 = reader.read(1)
         size.size -= 2
         return unknown1, unknown2
 
-
-    if type == "W3EnvironmentManager":
+    if type_name == "W3EnvironmentManager":
         unknown = reader.read(19)
         size.size -= 19
         return unknown
 
 
-    if type == "SQuestThreadSuspensionData":
-        unknown = reader.read(29)
-        size.size -= 29
-        return unknown
-
-    if type == "SActionPointId":
+    if type_name == "SActionPointId":
         unknown1 = reader.read(1)
         unknown2 = reader.read_int16()
         size.size -= 3
@@ -181,7 +167,7 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
             size.size -= 40
         return unknown3
 
-    if type in {
+    if type_name in {
         "EAIAttitude",
         "CPlayerInput",
         "EBehaviorGraph",
@@ -204,7 +190,7 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
         size.size = 0
         return unknown
 
-    if type == "CEntityTemplate":
+    if type_name == "CEntityTemplate":
         header_byte = reader.read_int(1)
         size.size -= 1
 
@@ -219,9 +205,24 @@ def parse_token(reader: Reader, type: str, size: Size, variable_names: list[str]
             size = 0
             return unknown
 
+    if type_name.startswith("handle:"):
+        handle_type = type_name.removeprefix("handle:")
+        return parse_token(reader, handle_type, size, variable_names)
 
-    logger.info(f"{reader.tell()}, {type}, {size.size}")
-    unknown_types.add(type)
+    if type_name.startswith("soft:"):
+        handle_type = type_name.removeprefix("soft:")
+        return parse_token(reader, handle_type, size, variable_names)
+
+    if type_name.startswith("array:2,0,"):
+        element_type = type_name.removeprefix("array:2,0,")
+        length = reader.read_int32()
+        size.size -= 4
+        array = []
+        for _ in range(length):
+            array.append(parse_token(reader, element_type, size, variable_names))
+        return array
+
+    unknown_types.add(type_name)
     size.size = 0
     return reader.read(size.size)
 
