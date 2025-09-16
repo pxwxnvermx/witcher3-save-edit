@@ -227,87 +227,45 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
     return reader.read(size.size)
 
 
-class VariableParser:
+class VariableParserBase:
     def __init__(self, variable_names=[]):
         self.variable_names = variable_names
 
     def parse(self, reader: Reader, size: Size):
-        magic = self.get_magic(reader)
+        raise NotImplementedError
 
-        if magic == "VL":
-            reader.read_string(2)
-            size.size -= 2
-            return self.parse_vl_variable(reader, size)
 
-        if magic == "BS":
-            reader.read_string(2)
-            size.size -= 2
-            return self.parse_bs_variable(reader, size)
+class VLVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(2)
+        size.size -= 2
 
-        if magic == "OP":
-            reader.read_string(2)
-            size.size -= 2
-            return self.parse_op_variable(reader, size)
+        name_idx = reader.read_int16()
+        type_idx = reader.read_int16()
+        size.size -= 4
 
-        if magic == "SS":
-            reader.read_string(2)
-            size.size -= 2
-            return self.parse_ss_variable(reader, size)
+        name = self.variable_names[name_idx - 1]
+        type_name = self.variable_names[type_idx - 1]
+        value = parse_token(reader, type_name, size, self.variable_names)
+        return "VL", name, type_name, value
 
-        if magic == "SXAP":
-            reader.read_string(4)
-            size.size -= 4
-            return self.parse_sxap_variable(reader, size)
 
-        if magic == "BLCK":
-            reader.read_string(4)
-            size.size -= 4
-            return self.parse_blck_variable(reader, size)
+class BSVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(2)
+        size.size -= 2
 
-        if magic == "AVAL":
-            reader.read_string(4)
-            size.size -= 4
-            return self.parse_aval_variable(reader, size)
+        name_idx = reader.read_int16()
+        size.size -= 2
+        name = self.variable_names[name_idx - 1]
+        return "BS", name
 
-        if magic == "PORP":
-            reader.read_string(4)
-            size.size -= 4
-            return self.parse_porp_variable(reader, size)
 
-        if magic == "MANU":
-            reader.read_string(4)
-            size.size -= 4
-            return self.parse_manu_variable(reader, size)
+class OPVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(2)
+        size.size -= 2
 
-        if magic == "SBDF":
-            reader.read_string(4)
-            size.size -= 4
-            return self.parse_sbdf_variable(reader, size)
-
-        variable = magic, "UNKNOWN", reader.read(size.size)
-        size.size = 0
-        return variable
-
-    def get_magic(self, reader: Reader) -> str:
-        has_magic = False
-        magic = ""
-        try:
-            magic = reader.peek_string(2)
-            if magic in {"BS", "OP", "SS", "VL"}:
-                has_magic = True
-        except UnicodeDecodeError:
-            has_magic = False
-
-        if not has_magic:
-            try:
-                magic = reader.peek_string(4)
-                if magic in {"AVAL", "BLCK", "MANU", "PORP", "SXAP"}:
-                    has_magic = True
-            except UnicodeDecodeError:
-                has_magic = False
-        return magic
-
-    def parse_op_variable(self, reader: Reader, size: Size):
         name_idx = reader.read_int(2, False)
         type_idx = reader.read_int(2, False)
         size.size -= 4
@@ -316,47 +274,46 @@ class VariableParser:
         except IndexError:
             name = "Unknown"
         try:
-            type = self.variable_names[type_idx - 1]
+            type_name = self.variable_names[type_idx - 1]
         except IndexError:
-            type = "Unknown"
-        value = parse_token(reader, type, size, self.variable_names)
-        return "OP", name, type, value
+            type_name = "Unknown"
+        value = parse_token(reader, type_name, size, self.variable_names)
+        return "OP", name, type_name, value
 
-    def parse_ss_variable(self, reader: Reader, size: Size):
+
+class SSVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(2)
+        size.size -= 2
+
         size_inner = reader.read_int32()
         size.size -= 4
         assert size.size == size_inner
 
         variables = []
         while size.size > 0:
-            variable = self.parse(reader, size)
+            variable = VariableParser(self.variable_names).parse(reader, size)
             variables.append(variable)
         return "SS", variables
 
-    def parse_vl_variable(self, reader: Reader, size: Size):
-        name_idx = reader.read_int16()
-        type_idx = reader.read_int16()
+
+class SXAPVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
         size.size -= 4
 
-        name = self.variable_names[name_idx - 1]
-        type = self.variable_names[type_idx - 1]
-        value = parse_token(reader, type, size, self.variable_names)
-        return "VL", name, type, value
-
-    def parse_bs_variable(self, reader: Reader, size: Size):
-        name_idx = reader.read_int16()
-        size.size -= 2
-        name = self.variable_names[name_idx - 1]
-        return "BS", name
-
-    def parse_sxap_variable(self, reader: Reader, size: Size):
         type_code_1 = reader.read_int32()
         type_code_2 = reader.read_int32()
         type_code_3 = reader.read_int32()
         size.size -= 3 * 4
         return "SXAP", type_code_1, type_code_2, type_code_3
 
-    def parse_blck_variable(self, reader: Reader, size: Size):
+
+class BLCKVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
+        size.size -= 4
+
         name_idx = reader.read_int(2, False)
         name = self.variable_names[name_idx - 1]
         blck_size = reader.read_int(2, False)
@@ -365,23 +322,33 @@ class VariableParser:
 
         variables = []
         while size.size > 0:
-            variable = self.parse(reader, size)
+            variable = VariableParser(self.variable_names).parse(reader, size)
             variables.append(variable)
 
-        return "BLCK", variables
+        return "BLCK", name, blck_size, unknown3, variables
 
-    def parse_aval_variable(self, reader: Reader, size: Size):
+
+class AVALVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
+        size.size -= 4
+
         name_idx = reader.read_int16()
         type_idx = reader.read_int16()
         unknown = reader.read_int32()
         size.size -= 6
 
         name = self.variable_names[name_idx - 1]
-        type = self.variable_names[type_idx - 1]
-        value = parse_token(reader, type, size, self.variable_names)
-        return "AVAL", name, type, value
+        type_name = self.variable_names[type_idx - 1]
+        value = parse_token(reader, type_name, size, self.variable_names)
+        return "AVAL", name, type_name, value
 
-    def parse_porp_variable(self, reader: Reader, size: Size):
+
+class PORPVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
+        size.size -= 4
+
         name_idx = reader.read_int16()
         type_idx = reader.read_int16()
         size.size -= 4
@@ -391,25 +358,25 @@ class VariableParser:
         name = self.variable_names[name_idx - 1]
         type_name = self.variable_names[type_idx - 1]
         read_value_size = Size(value_size)
-        logger.info(f"{name}")
         value = parse_token(reader, type_name, read_value_size, self.variable_names)
         size.size -= value_size
         assert read_value_size.size == 0
         return "PORP", name, type_name, value
 
-    def parse_manu_variable(self, reader: Reader, size: Size):
+
+class MANUVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
+        size.size -= 4
+
         string_count = reader.read_int32()
         reader.read_int32()
         size.size -= 4 * 2
 
         variable_names = []
-        for i in range(string_count):
+        for _ in range(string_count):
             s_len = reader.read_int(1)
-            try:
-                s = reader.read_string(s_len)
-            except UnicodeDecodeError:
-                reader.seek(-s_len, 1)
-                s = reader.read(s_len).decode(errors="ignore")
+            s = reader.read(s_len).decode(errors="ignore")
             variable_names.append(s)
             size.size -= 1 + s_len
 
@@ -421,7 +388,12 @@ class VariableParser:
         assert magic == "ENOD"
         return "MANU", variable_names
 
-    def parse_sbdf_variable(self, reader: Reader, size: Size):
+
+class SBDFVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
+        size.size -= 4
+
         string_count = reader.read_int32()
         size.size -= 4
 
@@ -430,7 +402,7 @@ class VariableParser:
             cur_pos = reader.tell()
             s_len = reader.read_int(1) & 127
             size.size -= s_len
-            check = reader.peek(1) == b'\x01'
+            check = reader.peek(1) == b"\x01"
             if check:
                 reader.read(1)
                 size.size -= 1
@@ -446,7 +418,7 @@ class VariableParser:
             for _ in range(count):
                 unknown = reader.read_int16()
                 value.append(reader.read_int(8))
-            logger.info(f"{cur_pos}, {check}, {s}")
+            # logger.info(f"{cur_pos}, {check}, {s}")
             variables.append((s, value))
 
         assert len(variables) == string_count
@@ -454,3 +426,60 @@ class VariableParser:
         size.size -= 4 + 4
         assert magic == "EBDF"
         return "SBDF", variables
+
+
+class ROTSVariableParser(VariableParserBase):
+    def parse(self, reader: Reader, size: Size):
+        reader.read_string(4)
+        size.size -= 4
+
+        unknown = reader.read_int32()
+        size.size -= 4
+        return "ROTS", unknown
+
+
+class VariableParser(VariableParserBase):
+    def __init__(self, variable_names=[]):
+        self.parsers = {
+            "VL": VLVariableParser(variable_names),
+            "BS": BSVariableParser(variable_names),
+            "OP": OPVariableParser(variable_names),
+            "SS": SSVariableParser(variable_names),
+            "SXAP": SXAPVariableParser(variable_names),
+            "BLCK": BLCKVariableParser(variable_names),
+            "AVAL": AVALVariableParser(variable_names),
+            "MANU": MANUVariableParser(variable_names),
+            "PORP": PORPVariableParser(variable_names),
+            # "SBDF": SBDFVariableParser(variable_names),
+            "ROTS": ROTSVariableParser(variable_names),
+        }
+        super().__init__(variable_names)
+
+    def parse(self, reader: Reader, size: Size):
+        magic = self.get_magic(reader)
+        parser = self.parsers.get(magic)
+        if parser is not None:
+            return parser.parse(reader, size)
+
+        variable = magic, "UNKNOWN", reader.read(size.size)
+        size.size = 0
+        return variable
+
+    def get_magic(self, reader: Reader) -> str:
+        has_magic = False
+        magic = ""
+        try:
+            magic = reader.peek_string(2)
+            if magic in self.parsers.keys():
+                has_magic = True
+        except UnicodeDecodeError:
+            has_magic = False
+
+        if not has_magic:
+            try:
+                magic = reader.peek_string(4)
+                if magic in self.parsers.keys():
+                    has_magic = True
+            except UnicodeDecodeError:
+                has_magic = False
+        return magic
