@@ -259,28 +259,17 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
             size.size -= 40
         return unknown3
 
-    if type_name in {
-        "EAIAttitude",
-        "CPlayerInput",
-        "EBehaviorGraph",
-        "ESignType",
-        "EVehicleSlot",
-        "SBuffImmunity",
-        "SGameplayFact",
-        "SGlossaryImageOverride",
-        "SRadialSlotDef",
-        "SItemUniqueId",
-        "SRewardMultiplier",
-        "W3AbilityManager",
-        "W3EffectManager",
-        "W3LevelManager",
-        "W3Reputation",
-        "W3TutorialManagerUIHandler",
-        "WeaponHolster",
-    }:
-        unknown = reader.read(size.size)
-        size.size = 0
-        return unknown
+    if type_name == "EDoorState":
+        state_idx = reader.read_int16()
+        size.size -= 2
+        state = variable_names[state_idx - 1]
+        return state
+
+    if type_name == "EFocusModeVisibility":
+        value_idx = reader.read_int16()
+        size.size -= 2
+        value = variable_names[value_idx - 1]
+        return value
 
     if type_name == "CEntityTemplate":
         header_byte = reader.read_int(1)
