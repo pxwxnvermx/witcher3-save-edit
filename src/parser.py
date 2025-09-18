@@ -94,8 +94,9 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return reader.read(3)
 
     if type_name == "GameTime":
-        size.size -= 11
-        return reader.read(11)
+        value = reader.read(size.size)
+        size.size = 0
+        return value
 
     if type_name == "IdTag":
         value = [reader.read(1)]
