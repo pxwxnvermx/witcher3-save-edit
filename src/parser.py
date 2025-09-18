@@ -67,9 +67,18 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         size.size -= 1
         string_encoded = (header_byte & 128) > 0
         if string_encoded:
-            string_length = header_byte & 127
-            size.size -= string_length
-            return reader.read_string(string_length)
+            s_len = header_byte & 127
+            check = reader.peek(1) == b"\x01"
+            if check:
+                reader.read(1)
+                size.size -= 1
+            try:
+                s = reader.read_string(s_len)
+            except UnicodeDecodeError:
+                reader.seek(-s_len, 1)
+                s = reader.read(s_len).decode(errors="ignore")
+            size.size -= s_len
+            return s
         return ""
 
     if type_name == "StringAnsi":
