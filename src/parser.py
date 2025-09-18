@@ -209,9 +209,28 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return unknown1, unknown2
 
     if type_name == "W3EnvironmentManager":
-        unknown = reader.read(19)
-        size.size -= 19
-        return unknown
+        unknown_1 = reader.read(1)
+        size.size -= 1
+        unknown_2 = reader.read_int32()
+        size.size -= 4
+        unknown_3 = reader.read(1)
+        size.size -= 1
+
+        parent_name_idx = reader.read_int16()
+        parent_name = variable_names[parent_name_idx - 1]
+        size.size -= 2
+        unknown_3 = reader.read(1)
+        size.size -= 1
+
+        name_idx = reader.read_int16()
+        name = variable_names[name_idx - 1]
+        type_idx = reader.read_int16()
+        type_name = variable_names[type_idx - 1]
+        size.size -= 8
+        value = parse_token(reader, type_name, size, variable_names)
+        unknown_4 = reader.read_int16()
+        size.size -= 2
+        return parent_name, name, type_name, value
 
     if type_name == "array:2,0,SQuestThreadSuspensionData":
         length = reader.read_int32()
