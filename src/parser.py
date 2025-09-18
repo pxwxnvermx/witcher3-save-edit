@@ -1,8 +1,10 @@
-from dataclasses import dataclass
-from src.utils import Reader, Size
-from uuid import UUID
 import logging
 import struct
+from dataclasses import dataclass
+from typing import Any
+from uuid import UUID
+
+from src.utils import Reader, Size
 
 logger = logging.getLogger(__name__)
 unknown_types = set()
@@ -10,7 +12,7 @@ unknown_types = set()
 
 @dataclass
 class Variable:
-    variable: any
+    variable: Any
     size: int
     token_size: int
 
