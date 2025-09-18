@@ -106,8 +106,26 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return tuple(value)
 
     if type_name == "Vector":
-        size.size -= 35
-        return reader.read(35)
+        small = size.size % 35 == 0
+        unknown_byte = reader.read(1)
+        size.size -= 1
+
+        values = []
+        for _ in range(4):
+            name_idx = reader.read_int16()
+            type_idx = reader.read_int16()
+            size.size -= 4
+            if not small:
+                unknown = reader.read_int32()
+                size.size -= 4
+            name = variable_names[name_idx - 1]
+            type_name = variable_names[type_idx - 1]
+            value = parse_token(reader, type_name, size, variable_names)
+            values.append((name, type_name, value))
+
+        reader.read_int16()
+        size.size -= 2
+        return values
 
     if type_name == "Vector2":
         size.size -= 19
