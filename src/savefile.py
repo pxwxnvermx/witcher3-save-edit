@@ -1,7 +1,9 @@
-import lz4.block
-from src.utils import Reader, Size
-from src.parser import MANUVariableParser, Variable, VariableParser
 import logging
+
+import lz4.block
+
+from src.parser import MANUVariableParser, Variable, VariableParser
+from src.utils import Reader, Size
 
 logger = logging.getLogger(__name__)
 
@@ -107,20 +109,20 @@ class SaveFile:
 
         for i in range(len(variable_table_entries)):
             cur_pos = reader.tell()
-            size = Size(variable_table_entries[i][1])
-            token_size = Size(variable_table_entries[i][1])
+            offset, size = variable_table_entries[i]
+            token_size = size
+            read_token_size = Size(size)
 
             if i < len(variable_table_entries) - 2:
-                token_size = Size(
-                    variable_table_entries[i + 1][0] - variable_table_entries[i][0]
-                )
+                token_size = variable_table_entries[i + 1][0] - offset
 
-            reader.seek(variable_table_entries[i][0])
-            variable = variable_parser.parse(reader, token_size)
+            if i > 0 and offset < cur_pos:
+                continue
+
+            reader.seek(offset)
+            variable = variable_parser.parse(reader, read_token_size)
 
             if variable:
-                v = Variable(
-                    variable=variable, size=size.size, token_size=token_size.size
-                )
+                v = Variable(variable=variable, size=size, token_size=token_size)
                 logger.info(f" {cur_pos} {v}")
                 self.variables.append(v)

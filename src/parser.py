@@ -283,7 +283,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
             return value
         else:
             unknown = reader.read(size.size)
-            size = 0
+            size.size = 0
             return unknown
 
     if type_name.startswith("handle:"):
@@ -304,8 +304,9 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return array
 
     unknown_types.add(type_name)
+    value = reader.read(size.size)
     size.size = 0
-    return reader.read(size.size)
+    return value
 
 
 class VariableParserBase:
@@ -369,7 +370,6 @@ class SSVariableParser(VariableParserBase):
 
         size_inner = reader.read_int32()
         size.size -= 4
-        assert size.size == size_inner
 
         variables = []
         while size.size > 0:
@@ -403,13 +403,12 @@ class BLCKVariableParser(VariableParserBase):
 
         read_value_size = Size(blck_size)
         variables = []
+        parser = VariableParser(self.variable_names)
         while read_value_size.size > 0:
-            variable = VariableParser(self.variable_names).parse(
-                reader, read_value_size
-            )
+            variable = parser.parse(reader, read_value_size)
             variables.append(variable)
-
         size.size -= blck_size
+
         return "BLCK", name, blck_size, unknown3, variables
 
 
@@ -420,17 +419,23 @@ class AVALVariableParser(VariableParserBase):
 
         name_idx = reader.read_int16()
         type_idx = reader.read_int16()
-        unknown = reader.read_int32()
+        value_size = reader.read_int32()
         size.size -= 8
 
         name = self.variable_names[name_idx - 1]
         type_name = self.variable_names[type_idx - 1]
-        value = parse_token(reader, type_name, size, self.variable_names)
-        return "AVAL", name, type_name, value
+
+        read_value_size = Size(value_size)
+        value = parse_token(reader, type_name, read_value_size, self.variable_names)
+        assert read_value_size.size == 0
+        size.size -= value_size
+
+        return "AVAL", name, type_name, value_size, value
 
 
 class PORPVariableParser(VariableParserBase):
     def parse(self, reader: Reader, size: Size):
+        start = reader.tell()
         reader.read_string(4)
         size.size -= 4
 
@@ -479,14 +484,15 @@ class SBDFVariableParser(VariableParserBase):
         reader.read_string(4)
         size.size -= 4
 
-        string_count = reader.read_int32()
+        item_count = reader.read_int16()
+        unknown1 = reader.read_int16()
         size.size -= 4
 
         variables = []
-        for i in range(string_count):
-            cur_pos = reader.tell()
+        for i in range(item_count):
             s_len = reader.read_int(1) & 127
             size.size -= s_len
+
             check = reader.peek(1) == b"\x01"
             if check:
                 reader.read(1)
@@ -497,16 +503,17 @@ class SBDFVariableParser(VariableParserBase):
                 reader.seek(-s_len, 1)
                 s = reader.read(s_len).decode(errors="ignore")
 
-            reader.read_int16()
+            unknown2 = reader.read_int16()
             count = reader.read_int16()
-            value = []
+            values = []
             for _ in range(count):
-                unknown = reader.read_int16()
-                value.append(reader.read_int(8))
-            # logger.info(f"{cur_pos}, {check}, {s}")
-            variables.append((s, value))
+                unknown3 = reader.read_int16()
+                value = reader.read_int32()
+                end = reader.read_int32()
+                values.append(value)
+            variables.append((s, values))
 
-        assert len(variables) == string_count
+        assert len(variables) == item_count
         magic = reader.read_string(4)
         size.size -= 4 + 4
         assert magic == "EBDF"
@@ -515,12 +522,28 @@ class SBDFVariableParser(VariableParserBase):
 
 class ROTSVariableParser(VariableParserBase):
     def parse(self, reader: Reader, size: Size):
+        start = reader.tell()
         reader.read_string(4)
         size.size -= 4
 
-        unknown = reader.read_int32()
+        value_size = reader.read_int32()
         size.size -= 4
-        return "ROTS", unknown
+
+        read_value_size = Size(value_size)
+        values = []
+
+        parser = VariableParser(self.variable_names)
+        while read_value_size.size > 0:
+            var_start = reader.tell()
+            value = parser.parse(reader, read_value_size)
+            values.append(value)
+        assert read_value_size.size == 0
+        size.size -= value_size
+
+        magic = reader.read_string(4)
+        assert magic == "STOR"
+        size.size -= 4
+        return "ROTS", value_size, values
 
 
 class VariableParser(VariableParserBase):
@@ -535,17 +558,16 @@ class VariableParser(VariableParserBase):
             "AVAL": AVALVariableParser(variable_names),
             "MANU": MANUVariableParser(variable_names),
             "PORP": PORPVariableParser(variable_names),
-            # "SBDF": SBDFVariableParser(variable_names),
             "ROTS": ROTSVariableParser(variable_names),
         }
         super().__init__(variable_names)
 
     def parse(self, reader: Reader, size: Size):
         magic = self.get_magic(reader)
+        m = magic or "FUCK"
         parser = self.parsers.get(magic)
         if parser is not None:
             return parser.parse(reader, size)
-
         variable = magic, "UNKNOWN", reader.read(size.size)
         size.size = 0
         return variable
