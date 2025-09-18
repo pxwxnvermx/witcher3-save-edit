@@ -146,12 +146,25 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return values
 
     if type_name == "EulerAngles":
-        size.size -= 3 + (8 * 3)
-        unknown1 = reader.read(3)
-        pitch = float.fromhex(reader.read(8).hex())
-        yaw = float.fromhex(reader.read(8).hex())
-        roll = float.fromhex(reader.read(8).hex())
-        return unknown1, pitch, yaw, roll
+        small = size.size % 27 == 0
+        unknown = reader.read(1)
+        size.size -= 1
+        values = []
+        for _ in range(3):
+            name_idx = reader.read_int16()
+            type_idx = reader.read_int16()
+            size.size -= 4
+            if not small:
+                unknown_2 = reader.read_int32()
+                size.size -= 4
+            name = variable_names[name_idx - 1]
+            type_name = variable_names[type_idx - 1]
+            value = parse_token(reader, type_name, size, variable_names)
+            values.append(value)
+
+        reader.read_int16()
+        size.size -= 2
+        return values
 
     if type_name == "EntityHandle":
         unknown1 = reader.read_int(1)
