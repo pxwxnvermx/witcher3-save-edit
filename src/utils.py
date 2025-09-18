@@ -24,8 +24,12 @@ class Reader(BytesIO):
         return int.from_bytes(self.read(size), "little", signed=signed)
 
     def peek_string(self, size) -> str:
-        s = self.read(size).decode()
-        self.seek(-size, 1)
+        try:
+            s = self.read(size).decode()
+            self.seek(-size, 1)
+        except UnicodeDecodeError:
+            self.seek(-size, 1)
+            raise
         return s
 
     def peek(self, size) -> str:
