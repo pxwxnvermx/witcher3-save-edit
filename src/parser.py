@@ -157,19 +157,20 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return unknown
 
     if type_name == "array:2,0,SQuestThreadSuspensionData":
-        cur_pos = reader.tell()
-        print(cur_pos)
         length = reader.read_int32()
         size.size -= 4
         array = []
         if length > 0:
-            unknown = reader.read(25)
-            size.size -= 25
-            read_value_size = Size(reader.read_int32())
-            while read_value_size.size > 0:
-                array.append(
-                    VariableParser(variable_names).parse(reader, read_value_size)
-                )
+            unknown = reader.read(29)
+            size.size -= 29
+            for i in range(length):
+                array.append(VariableParser(variable_names).parse(reader, size))
+                if i < length - 1:
+                    reader.read(31)
+                    size.size -= 31
+                else:
+                    reader.read(2)
+                    size.size -= 2
         return array
 
     if type_name == "SActionPointId":
