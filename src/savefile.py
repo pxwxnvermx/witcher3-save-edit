@@ -1,3 +1,4 @@
+import json
 import logging
 
 import lz4.block
@@ -104,7 +105,7 @@ class SaveFile:
         assert len(variable_table_entries) == entry_count
         variable_table_entries.sort(key=lambda item: item[0])
 
-        self.variables = []
+        variables: list[Variable] = []
         variable_parser = VariableParser(variable_names=self.variable_names)
 
         for i in range(len(variable_table_entries)):
@@ -125,4 +126,23 @@ class SaveFile:
             if variable:
                 v = Variable(variable=variable, size=size, token_size=token_size)
                 logger.info(f" {cur_pos} {v}")
-                self.variables.append(v)
+                variables.append(v)
+
+        variable_groups = []
+        idx = 0
+        while idx < len(variables):
+            group = []
+            variable = variables[idx]
+            group.append(variable.variable)
+            cur_size = variable.size - variable.token_size
+            idx += 1
+
+            while cur_size > 0:
+                var = variables[idx]
+                cur_size -= var.size
+                group.append(var.variable)
+                idx += 1
+
+            variable_groups.append(group)
+
+        json.dump(variable_groups, open("data/data.json", "w"), indent=4)
