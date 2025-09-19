@@ -98,19 +98,19 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
     if type_name == "CGUID":
         guid_data = reader.read(16)
         size.size -= 16
-        return UUID(bytes=guid_data)
+        return str(UUID(bytes=guid_data))
 
     if type_name == "EngineTime":
         size.size -= 3
-        return reader.read(3)
+        return reader.read(3).hex()
 
     if type_name == "GameTime":
         value = reader.read(size.size)
         size.size = 0
-        return value
+        return value.hex()
 
     if type_name == "IdTag":
-        value = [reader.read(1)]
+        value = [reader.read(1).hex()]
         for _ in range(4):
             value.append(reader.read_int32())
         size.size -= 17
@@ -183,8 +183,8 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         unknown2 = 0x00
         unknown3 = None
         if unknown1 > 0:
-            unknown2 = reader.read(1)
-            unknown3 = reader.read(16)
+            unknown2 = reader.read_int(1)
+            unknown3 = reader.read_int(16)
             size.size -= 17
         return unknown1, unknown2, unknown3
 
@@ -203,8 +203,8 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return taglist_flag, taglist_entries
 
     if type_name in {"eGwintFaction", "EJournalStatus", "EZoneName", "EDifficultyMode"}:
-        unknown1 = reader.read(1)
-        unknown2 = reader.read(1)
+        unknown1 = reader.read_int(1)
+        unknown2 = reader.read_int(1)
         size.size -= 2
         return unknown1, unknown2
 
@@ -219,7 +219,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         parent_name_idx = reader.read_int16()
         parent_name = variable_names[parent_name_idx - 1]
         size.size -= 2
-        unknown_3 = reader.read(1)
+        unknown_4 = reader.read(1)
         size.size -= 1
 
         name_idx = reader.read_int16()
@@ -255,7 +255,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         size.size -= 3
         unknown3 = 0
         if unknown2 > 0:
-            unknown3 = reader.read(40)
+            unknown3 = reader.read(40).hex()
             size.size -= 40
         return unknown3
 
@@ -284,7 +284,12 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         else:
             unknown = reader.read(size.size)
             size.size = 0
-            return unknown
+            return unknown.hex()
+
+    # if type_name == "W3AbilityManager":
+    #     value_size = reader.read_int32()
+    #     unknown = reader.read_int16()
+    #     padding = reader.read_int32()
 
     if type_name.startswith("handle:"):
         handle_type = type_name.removeprefix("handle:")
@@ -304,7 +309,8 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return array
 
     unknown_types.add(type_name)
-    value = reader.read(size.size)
+    print(reader.tell(), type_name)
+    value = reader.read(size.size).hex()
     size.size = 0
     return value
 
@@ -564,11 +570,10 @@ class VariableParser(VariableParserBase):
 
     def parse(self, reader: Reader, size: Size):
         magic = self.get_magic(reader)
-        m = magic or "FUCK"
         parser = self.parsers.get(magic)
         if parser is not None:
             return parser.parse(reader, size)
-        variable = magic, "UNKNOWN", reader.read(size.size)
+        variable = magic, "UNKNOWN", reader.read(size.size).hex()
         size.size = 0
         return variable
 
