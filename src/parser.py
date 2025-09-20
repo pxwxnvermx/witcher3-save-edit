@@ -118,7 +118,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
 
     if type_name == "Vector":
         small = size.size % 35 == 0
-        unknown_byte = reader.read(1)
+        _unknown_byte = reader.read(1)
         size.size -= 1
 
         values = []
@@ -139,7 +139,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return values
 
     if type_name == "Vector3":
-        unknown_byte = reader.read(1)
+        _unknown_byte = reader.read(1)
         size.size -= 1
         values = []
         for _ in range(3):
@@ -166,7 +166,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
             type_idx = reader.read_int16()
             size.size -= 4
             if not small:
-                unknown_2 = reader.read_int32()
+                _unknown_2 = reader.read_int32()
                 size.size -= 4
             name = variable_names[name_idx - 1]
             type_name = variable_names[type_idx - 1]
@@ -209,17 +209,17 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         return unknown1, unknown2
 
     if type_name == "W3EnvironmentManager":
-        unknown_1 = reader.read(1)
+        _unknown_1 = reader.read(1)
         size.size -= 1
-        unknown_2 = reader.read_int32()
+        _unknown_2 = reader.read_int32()
         size.size -= 4
-        unknown_3 = reader.read(1)
+        _unknown_3 = reader.read(1)
         size.size -= 1
 
         parent_name_idx = reader.read_int16()
         parent_name = variable_names[parent_name_idx - 1]
         size.size -= 2
-        unknown_4 = reader.read(1)
+        _unknown_4 = reader.read(1)
         size.size -= 1
 
         name_idx = reader.read_int16()
@@ -228,7 +228,7 @@ def parse_token(reader: Reader, type_name: str, size: Size, variable_names: list
         type_name = variable_names[type_idx - 1]
         size.size -= 8
         value = parse_token(reader, type_name, size, variable_names)
-        unknown_4 = reader.read_int16()
+        _unknown_4 = reader.read_int16()
         size.size -= 2
         return parent_name, name, type_name, value
 
@@ -374,7 +374,7 @@ class SSVariableParser(VariableParserBase):
         reader.read_string(2)
         size.size -= 2
 
-        size_inner = reader.read_int32()
+        _size_inner = reader.read_int32()
         size.size -= 4
 
         variables = []
@@ -441,7 +441,6 @@ class AVALVariableParser(VariableParserBase):
 
 class PORPVariableParser(VariableParserBase):
     def parse(self, reader: Reader, size: Size):
-        start = reader.tell()
         reader.read_string(4)
         size.size -= 4
 
@@ -491,7 +490,7 @@ class SBDFVariableParser(VariableParserBase):
         size.size -= 4
 
         item_count = reader.read_int16()
-        unknown1 = reader.read_int16()
+        _unknown1 = reader.read_int16()
         size.size -= 4
 
         variables = []
@@ -509,13 +508,12 @@ class SBDFVariableParser(VariableParserBase):
                 reader.seek(-s_len, 1)
                 s = reader.read(s_len).decode(errors="ignore")
 
-            unknown2 = reader.read_int16()
+            _unknown2 = reader.read_int16()
             count = reader.read_int16()
             values = []
             for _ in range(count):
-                unknown3 = reader.read_int16()
+                _unknown3 = reader.read_int16()
                 value = reader.read_int32()
-                end = reader.read_int32()
                 values.append(value)
             variables.append((s, values))
 
@@ -528,7 +526,6 @@ class SBDFVariableParser(VariableParserBase):
 
 class ROTSVariableParser(VariableParserBase):
     def parse(self, reader: Reader, size: Size):
-        start = reader.tell()
         reader.read_string(4)
         size.size -= 4
 
@@ -540,7 +537,6 @@ class ROTSVariableParser(VariableParserBase):
 
         parser = VariableParser(self.variable_names)
         while read_value_size.size > 0:
-            var_start = reader.tell()
             value = parser.parse(reader, read_value_size)
             values.append(value)
         assert read_value_size.size == 0

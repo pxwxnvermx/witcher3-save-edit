@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class SaveFile:
     header_size = 0
-    filepath: str = None
+    filepath: str | None = None
     data = bytearray()
 
     def __init__(self, filepath):
@@ -54,12 +54,12 @@ class SaveFile:
     def parse(self):
         reader = Reader(self.data)
         reader.seek(self.header_size)
-        header_start = reader.tell()
+        _header_start = reader.tell()
         magic = reader.read_string(4)
         assert magic == "SAV3"
-        type_code_1 = reader.read_int32()
-        type_code_2 = reader.read_int32()
-        type_code_3 = reader.read_int32()
+        _type_code_1 = reader.read_int32()
+        _type_code_2 = reader.read_int32()
+        _type_code_3 = reader.read_int32()
 
         reader.seek(-6, 2)
         variable_table_offset = reader.read_int32()
